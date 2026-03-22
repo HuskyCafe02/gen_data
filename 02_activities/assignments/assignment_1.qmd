@@ -21,18 +21,27 @@ Before fitting any models, it is essential to understand the data. Use R or bash
 
 ```         
 # Your answer here...
+{bash}
+wc -l ./02_activities/data/gwa.qc.A1.fam
+#4000 samples
 ```
 
 (ii) What is the 'variable type' of the response variable (i.e.Continuous or binary)?
 
 ```         
 # Your answer here...
+{bash}
+head ./02_activities/data/gwa.qc.A1.fam
+#The phenotype is not continuous, therefore the answer is continuous
 ```
 
 (iii) Read the .bim file. How many SNPs does the dataset contain?
 
 ```         
 # Your answer here...
+{bash}
+wc -l ./02_activities/data/gwa.qc.A1.bim
+#101083 SNPs
 ```
 
 #### Question 2: Allele Frequency Estimation
@@ -41,12 +50,23 @@ Before fitting any models, it is essential to understand the data. Use R or bash
 
 ```         
 # Your code here...
+{bash}
+plink2 --bfile ./02_activities/data/gwa.qc.A1 \
+      --extract ./02_activities/data/A1snplist.txt \
+      --freq
+      --out ./02_activities/data/A1freq
+
+#rs1861 -> 5.40%
+#rs3813199 -> 5.69%
+#rs3128342 -> 30.51%
+#rs11804831 -> 15.43%
 ```
 
 (ii) What are the minor allele frequencies (MAFs) for these four SNPs?
 
 ```         
 # Your code here...
+#Since all of their frequencies are below 50%, it is the same as the frequency given in part (i)
 ```
 
 #### Question 3: Hardy–Weinberg Equilibrium (HWE) Test
@@ -55,12 +75,34 @@ Before fitting any models, it is essential to understand the data. Use R or bash
 
 ```         
 # Your code here...
+{bash}
+plink2 --bfile ./02_activities/data/gwa.qc.A1 \
+--hardy \
+--out ./02_activities/data/gwa.qc.A1.hwe
+
+{r}
+hwe <- fread("./02_activities/data/gwa.qc.A1.hwe.hardy")
+head(hwe)
 ```
 
 (ii) What are the HWE p-values for SNPs rs1861, rs3813199, rs3128342, and rs11804831?
 
 ```         
 # Your code here...
+{bash}
+plink2 --bfile ./02_activities/data/gwa.qc.A1 \
+--extract ./02_activities/data/A1snplist.txt \
+--hardy \
+--out ./02_activities/data/gwa.qc.A1.3.hwe
+
+{r}
+hwe <- fread("./02_activities/data/gwa.qc.A1.3.hwe.hardy")
+head(hwe)
+
+#rs1861 -> P = 0.274719
+#rs3813199 -> P = 1.0
+#rs3128342 -> p = 0.330273
+#rs11804831 -> p = 0.113354 
 ```
 
 #### Question 4: Genetic Association Test
@@ -69,42 +111,156 @@ Before fitting any models, it is essential to understand the data. Use R or bash
 
 ```         
 # Your code here...
+{bash}
+plink2 --bfile ./02_activities/data/gwa.qc.A1 --freq --out ./02_activities/data/gwa.qc.freq.A1
+
+{r}
+freq <- fread("./02_activities/data/gwa.qc.freq.A1.afreq")
+
+{bash}
+plink2 --bfile ./02_activities/data/gwa.qc.A1 \
+      --extract ./02_activities/data/A1snplist.txt \
+      --recode A \
+      --out ./02_activities/data/geno.additive.A1
+
+{r}
+geno_subset <- fread("./02_activities/data/geno.additive.A1.raw")
+geno_subset=na.omit(geno_subset)
+geno_subset$PHENOTYPE=geno_subset$PHENOTYPE-1
+
+{r}
+ADmodel <- lm(PHENOTYPE ~ rs1861_C, data = geno_subset)
+summary(ADmodel)
+
+#p-value: < 2.2e-16
 ```
 
 (ii) How would you interpret the beta coefficient from this regression?
 
 ```         
 # Your answer here...
+Given the extremely small p-value of less than 2.2e-16, it suggests a strong correlation between the SNPs and the phenotype.
 ```
 
 (iii) Plot the scatterplot of phenotype versus the genotype of SNP rs1861. Add the regression line to the plot.
 
 ```         
 # Your code here...
+{r}
+ geno_range <- data.frame(
+   rs1861_C = seq(0, 2, length.out = 100)
+ )
+ geno_range$predicted_prob <- predict(ADmodel, newdata = geno_range, type = "response")
+
+count_data <- geno_subset %>%
+  mutate(PHENOTYPE = round(PHENOTYPE)) %>%  
+  filter(!is.na(rs1861_C), !is.na(PHENOTYPE)) %>%
+  group_by(rs1861_C, PHENOTYPE) %>%
+  summarise(count = n(), .groups = "drop")
+
+p1=ggplot() +
+  geom_point(
+    data = count_data,
+    aes(x = rs1861_C, y = PHENOTYPE, size = count),
+    color = "blue"
+  ) +
+
+  geom_line(
+    data = geno_range,
+    aes(x = rs1861_C, y = predicted_prob),
+    color = "red",
+    size = 1.2
+  ) +
+  
+  scale_size_continuous(range = c(2, 10)) +
+  labs(
+    title = "Logistic Regression: PHENOTYPE ~ Genotype",
+    x = "Genotype (0/1/2)",
+    y = "Phenotype ",
+    size = "Count"
+  ) +
+  
+  coord_cartesian(xlim = c(-0.5, 2.5), ylim = c(-0.1, 1.1)) +
+  theme_minimal()
+
+print(p1)
+ggsave("./02_activities/data/A1p1.png", plot = p1, width = 7, height = 5, dpi = 300)
 ```
 
 (iv) Convert the genotype coding for rs1861 to recessive coding.
 
 ```         
 # Your code here...
+{r}
+geno_subset_rec <- geno_subset
+geno_subset_rec[, 7:ncol(geno_subset_rec)] <- as.data.frame(
+  lapply(geno_subset[, 7:ncol(geno_subset)], function(x) ifelse(x == 2, 1, 0))
+)
 ```
 
 (v) Conduct a linear regression to test the association between the recessive-coded rs1861 and the phenotype. What is the p-value?
 
 ```         
 # Your code here...
+{r}
+RECmodel <- lm(PHENOTYPE ~ rs1861_C, data = geno_subset_rec)
+summary (RECmodel)
+#p-value: < 2.2e-16
 ```
 
 (vi) Plot the scatterplot of phenotype versus the recessive-coded genotype of rs1861. Add the regression line to the plot.
 
 ```         
 # Your code here...
+{r}
+model <- lm(PHENOTYPE ~ rs1861_C, data = geno_subset_rec)
+summary(model)
+
+geno_range <- data.frame(
+   rs1861_C = seq(0, 1, length.out = 100)
+ )
+ geno_range$predicted_prob <- predict(RECmodel, newdata = geno_range, type = "response")
+
+count_data <- geno_subset_dom %>%
+  mutate(PHENOTYPE = round(PHENOTYPE)) %>%
+  filter(!is.na(rs1861_C), !is.na(PHENOTYPE)) %>%
+  group_by(rs1861_C, PHENOTYPE) %>%
+  summarise(count = n(), .groups = "drop")
+
+p3=ggplot() +
+  geom_point(
+    data = count_data,
+    aes(x = rs1861_C, y = PHENOTYPE, size = count),
+    color = "blue"
+  ) +
+  geom_line(
+    data = geno_range,
+    aes(x = rs1861_C, y = predicted_prob),
+    color = "red",
+    size = 1.2
+  ) +
+  scale_size_continuous(range = c(2, 10)) +
+  labs(
+    title = "Logistic Regression: PHENOTYPE ~ Genotype",
+    x = "Genotype (0/1)",
+    y = "Phenotype ",
+    size = "Count"
+  ) +
+  coord_cartesian(xlim = c(-0.5, 1.5), ylim = c(-0.1, 1.1)) +
+  theme_minimal()
+
+print(p3)
+ggsave("./02_activities/data/A1p3.png", plot = p3, width = 7, height = 5, dpi = 300)
+
 ```
 
 (vii) Which model fits better? Justify your answer.
 
 ```         
 # Your answer here...
+AIC(ADmodel, RECmodel)
+#The AD model has a lower AIC, therefore the Additive model is a better fit.
+
 ```
 
 ### Criteria
