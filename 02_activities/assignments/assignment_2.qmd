@@ -5,6 +5,17 @@ format: html
 
 You will need **PLINK2** installed and available in your PATH. Please follow the OS-specific setup guide in [`SETUP.md`](../../SETUP.md). The dataset for this assignment consists of the following binary PLINK files: `gwa.A2.bed`, `gwa.A2.bim`, `gwa.A2.fam` , available at the following Google Drive link: <https://drive.google.com/drive/folders/1rHoy3z52Yyj985ukjjtLhfIBxchpyYtZ?usp=drive_link>. Please download all three files and save them in `02_activities/data/`.
 
+```{r}
+knitr::opts_knit$set(root.dir = normalizePath("../../"))
+library(data.table)
+library(qqman)
+library(ggplot2)
+```
+```{bash}
+cd ../..
+```
+
+
 #### Question 1: Data inspection
 
 Before you run any models, first get familiar with the dataset. You may find `data.table::fread()` in R helpful for reading `.bim` and `.fam` files.
@@ -13,18 +24,32 @@ Before you run any models, first get familiar with the dataset. You may find `da
 
 ```{r}
 # Your code here...
+data.table::fread("./02_activities/data/gwa.A2.fam")
+#4000 samples
 ```
 
 (ii) Read the `.bim` file. How many SNPs does the dataset contain?
 
 ```{r}
 # Your code here...
+data.table::fread("./02_activities/data/gwa.A2.bim")
+#306102 SNPs
 ```
 
 (iii) Make a histogram (or density plot) of the phenotype. Does it look roughly Gaussian?
 
 ```{r}
 # Your code here...
+q3 <- fread("./02_activities/data/gwa.A2.fam")
+
+#histogram
+v <- c(q3$V6)
+hist(v, xlab="phenotype", col="darkgreen", border="black" )
+
+#density plot
+den <-density(q3$V6)
+ggplot(q3, aes(x=V6)) + geom_density(fill = "darkgreen") + labs(title = "Q3", x = "phenotype", y="density")
+
 ```
 
 #### Question 2: Quality control (QC)
@@ -35,6 +60,7 @@ Now we will perform QC using PLINK2 for the genotype files in `gwa.A2`.
 
 ```{bash}
 # Your code here...
+plink2 --bfile ./02_activities/data/gwa.A2 --maf 0.05 --geno 0.01 --mind 0.1 --hwe 0.00005 --make-bed --out ./02_activities/data/gwa.qc.A2
 ```
 
 #### Question 3: Relatedness
@@ -45,18 +71,23 @@ i)  Perform LD pruning on `gwa.qc.A2` using PLINK2 with the following parameters
 
 ```{bash}
 # Your code here...
+plink2 --bfile ./02_activities/data/gwa.qc.A2 --indep-pairwise 500 50 0.05 --out ./02_activities/data/gwa.qc.A2.pruned
+
+plink2 --bfile ./02_activities/data/gwa.qc.A2 --extract ./02_activities/data/gwa.qc.A2.pruned.prune.in --make-bed --out ./02_activities/data/gwa.qc.A2.pruned
 ```
 
 (ii) Use PLINK2 on the LD-pruned dataset to identify a set of unrelated individuals up to (approximately) 2nd-degree relatives (use a kinship cutoff of 0.0884).
 
 ```{bash}
 # Your code here...
+plink2 --bfile ./02_activities/data/gwa.qc.A2.pruned --king-cutoff 0.0884 --out ./02_activities/data/gwa.A2.king
 ```
 
 (iii) Using the unrelated individual list from part (ii), create a dataset containing only unrelated individuals and name it `gwa.qc_unrelated.A2`.
 
 ```{bash}
 # Your code here...
+plink2 --bfile ./02_activities/data/gwa.qc.A2 --keep ./02_activities/data/gwa.A2.king.king.cutoff.in.id --make-bed --out ./02_activities/data/gwa.qc.A2.unrelated
 ```
 
 #### Question 4: principal component analysis (PCA)
@@ -67,6 +98,9 @@ i)  Perform LD pruning on `gwa.qc.A2` using PLINK2 with the following parameters
 
 ```{bash}
 # Your code here...
+plink2 --bfile ./02_activities/data/gwa.qc.A2.unrelated --extract ./02_activities/data/gwa.qc.A2.pruned.prune.in --make-bed --out ./02_activities/data/gwa.qc.A2.unrelated.pruned
+
+plink2 --bfile ./02_activities/data/gwa.qc.A2.unrelated.pruned --pca 20 --out ./02_activities/data/gwa.A2.unrel.PCA
 ```
 
 #### Question 5: GWAS analyses
@@ -83,18 +117,42 @@ Assume that:
 
 ```{bash}
 # Your code here...
+plink2 --bfile ./02_activities/data/gwa.qc.A2 --ci 0.95 --logistic --covar ./02_activities/data/gwa.A2.unrel.PCA.eigenvec --covar-name PC1,PC2,PC3 --adjust --out ./02_activities/data/gwa.qc.A2.assoc
 ```
 
 (ii) Create a Manhattan plot of the GWAS results.
 
 ```{r}
 # Your code here...
+assoc <- data.table::fread("./02_activities/data/gwa.qc.A2.assoc.PHENO1.glm.linear")
+
+assoc_add <- assoc[TEST == "ADD"]
+
+setnames(assoc_add, c("#CHROM","POS","ID"), c("CHR","BP","SNP"))
+
+png("./02_activities/data/manhattan.plot.A2.png", width=1200, height=800, res=150)
+
+manhattan(assoc_add,
+          chr = "CHR",
+          bp  = "BP",
+          snp = "SNP",
+          p   = "P",
+          xlab = "",
+          ylab = "",
+          suggestiveline = FALSE,
+          cex.axis = 1.5,
+          col = c("darkgreen", "lightslateblue"))
+        
+dev.off()
 ```
 
 (iii) Create a QQ plot of the GWAS p-values.
 
 ```{r}
 # Your code here...
+png("./02_activities/data/QQ_plot.A2.png", width=1200, height=800, res=150)
+qq(assoc_add$P, main = "Q-Q plot of GWAS p-values")
+dev.off()
 ```
 
 ### Criteria
@@ -108,7 +166,7 @@ Assume that:
 
 ### Submission Information
 
-🚨 **Please review our [Assignment Submission Guide](https://github.com/UofT-DSI/onboarding/blob/main/onboarding_documents/submissions.md)** 🚨 for detailed instructions on how to format, branch, and submit your work. Following these guidelines is crucial for your submissions to be evaluated correctly.
+🚨 **Please review our [Assignment Submission Guide](https://github.com/UofTUofT-DSI/onboarding/blob/main/onboarding_documents/submissions.md)** 🚨 for detailed instructions on how to format, branch, and submit your work. Following these guidelines is crucial for your submissions to be evaluated correctly.
 
 ------------------------------------------------------------------------
 
